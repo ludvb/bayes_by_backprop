@@ -101,7 +101,7 @@ def train(
             valid_set_idxs = np.setdiff1d(range(len(data)), train_set_idxs)
             train_set = DataLoader(
                 Subset(data, train_set_idxs),
-                shuffle=True,
+                shuffle=False,
                 batch_size=2048,
                 num_workers=len(os.sched_getaffinity(0)),
             )
