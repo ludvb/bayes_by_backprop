@@ -64,8 +64,9 @@ def train(
                     ]),
                 )
             log(INFO, 'average loss=%.4e', np.mean(loss))
-            log(INFO, 'average accuracy=%2.1f', np.mean(accuracy))
-            log(INFO, 'average accuracy=%2.1f', np.mean(weighted_accuracy))
+            log(INFO, 'average accuracy=%2.1f', 100 * np.mean(accuracy))
+            log(INFO, 'average wt. accuracy=%2.1f',
+                100 * np.mean(weighted_accuracy))
             return loss, accuracy, weighted_accuracy
 
         return _wrapper
