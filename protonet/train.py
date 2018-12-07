@@ -40,19 +40,17 @@ def train(
 
     device = get_device()
 
-    def _step_function(output_hook) -> Callable[[Any], None]:
+    def _step_function(step_func) -> Callable[[Any], None]:
         def _wrapper(data_generator) -> Tuple[List[float], List[float]]:
             data_tracker = tqdm(data_generator, dynamic_ncols=True)
             loss: List[float] = []
             accuracy: List[float] = []
             weighted_accuracy: List[float] = []
             for x in data_tracker:
-                optimizer.zero_grad()
-                y = network({
+                y = step_func({
                     k: v.to(device) if isinstance(v, t.Tensor) else v
                     for k, v in x.items()
                 })
-                output_hook(y)
                 loss += [y['loss'].item()]
                 accuracy += [y['accuracy']]
                 weighted_accuracy += [y['weighted_accuracy']]
@@ -72,13 +70,16 @@ def train(
         return _wrapper
 
     @_step_function
-    def _train_step(y):
+    def _train_step(x):
+        optimizer.zero_grad()
+        y = network(x)
         y['loss'].backward()
         optimizer.step()
+        return y
 
     @_step_function
-    def _valid_step(_y):
-        pass
+    def _valid_step(x):
+        return network(x)
 
     @with_interrupt_handler(_interrupt_handler)
     def _run_training_loop():
