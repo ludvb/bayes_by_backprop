@@ -17,6 +17,10 @@ from .utils import get_device, store_state, with_interrupt_handler
 from .logging import INFO, log
 
 
+class Interrupt(Exception):
+    pass
+
+
 def train(
         network: t.nn.Module,
         optimizer: Optimizer,
@@ -28,7 +32,7 @@ def train(
     def _interrupt_handler(*_):
         from multiprocessing import current_process
         if current_process().name == 'MainProcess':
-            raise Exception("interrupted")  # u.Interrupted()
+            raise Interrupt()
 
     def checkpoint(name=None):
         store_state(
@@ -127,6 +131,10 @@ def train(
                 best_loss = avg_loss
                 checkpoint()
 
-    _run_training_loop()
-    log(INFO, 'all epochs done')
+    try:
+        _run_training_loop()
+        log(INFO, 'all epochs finished, stopping')
+    except Interrupt:
+        log(INFO, 'interrupted, stopping')
+
     checkpoint('final')
