@@ -20,7 +20,13 @@ def split(entries, proportion):
     return entries[a], entries[b]
 
 
-def run(data_file, training_size, min_seq_length, min_word_count):
+def run(
+        data_file,
+        training_size,
+        min_seq_length,
+        min_word_count=None,
+        top_words=None,
+):
     log(INFO, 'reading data...')
     data = pd.read_csv(
         data_file,
@@ -55,14 +61,24 @@ def run(data_file, training_size, min_seq_length, min_word_count):
         .loc[training_ids]
         .mean(axis=0)
     )
-    too_few = word_bags.columns[avg_count < min_word_count]
-    word_bags = word_bags.drop(too_few, axis=1)
-    log(
-        INFO,
-        'dropped %d words avg count less than %f',
-        len(too_few),
-        min_word_count,
-    )
+
+    if min_word_count:
+        too_few = word_bags.columns[avg_count < min_word_count]
+        word_bags = word_bags.drop(too_few, axis=1)
+        log(
+            INFO,
+            'dropped %d words avg count less than %f',
+            len(too_few),
+            min_word_count,
+        )
+    if top_words:
+        top_words = avg_count.sort_values()[-top_words:].index
+        word_bags = word_bags.filter(top_words, axis=1)
+        log(
+            INFO,
+            'kept top %d words',
+            len(top_words),
+        )
 
     log(INFO, 'centering word bags...')
     word_bags = (
@@ -112,7 +128,8 @@ def main():
     args.add_argument('data_file', metavar='data', type=str)
     args.add_argument('--training-size', type=float, default=0.9)
     args.add_argument('--min-seq-length', type=int, default=100)
-    args.add_argument('--min-word-count', type=float, default=0.2)
+    args.add_argument('--min-word-count', type=float, default=None)
+    args.add_argument('--top-words', type=int, default=None)
     run(**vars(args.parse_args()))
 
 
