@@ -13,8 +13,6 @@ import os
 
 import operator as op
 
-import subprocess as sp
-
 import sys
 
 from typing import Any, Callable, List, Optional, Tuple
@@ -31,11 +29,7 @@ from torch.utils.data.dataset import Subset
 
 from tqdm import tqdm
 
-VERSION: str = (sp.run(
-    'git describe --dirty --always',
-    capture_output=True,
-    shell=True,
-).stdout.decode().strip())
+from . import __version__
 
 DEVICE: t.device = t.device('cuda' if t.cuda.is_available() else 'cpu')
 
@@ -299,8 +293,6 @@ def run_train(
                     k: v.to(DEVICE) if isinstance(v, t.Tensor) else v
                     for k, v in x.items()
                 })
-                if np.isnan(y['loss'].cpu().detach().numpy()):
-                    import ipdb; ipdb.set_trace()
                 output_hook(y)
                 loss += [y['loss'].item()]
                 accuracy += [y['accuracy']]
@@ -390,10 +382,10 @@ def main():
     from tempfile import gettempdir
 
     args = ap.ArgumentParser(
-        description=f'Version: {VERSION:s}',
+        description=f'Version: {__version__:s}',
         formatter_class=ap.RawTextHelpFormatter,
     )
-    args.add_argument('-v', '--version', action='version', version=VERSION)
+    args.add_argument('-v', '--version', action='version', version=__version__)
     args.add_argument('--verbose', action='store_true')
 
     sp = args.add_subparsers()
@@ -451,7 +443,7 @@ def main():
     else:
         logging.getLogger().setLevel(INFO)
 
-    log(INFO, 'running version %s with args %s', VERSION,
+    log(INFO, 'running version %s with args %s', __version__,
         ', '.join([f'{k}={v}' for k, v in opts.items()]))
 
     log(INFO, 'using device: "%s"', str(DEVICE.type))
