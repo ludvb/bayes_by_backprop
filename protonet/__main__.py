@@ -135,12 +135,12 @@ def main():
         )
     except Exception as err:  # pylint: disable=broad-except
         from traceback import format_exc
-        from .utils import logging
+        from .logging import LOGGER
         trace = err.__traceback__
         while trace.tb_next is not None:
             trace = trace.tb_next
         frame = trace.tb_frame
-        logging.LOGGER.findCaller = (
+        LOGGER.findCaller = (
             lambda self, stack_info=None, f=frame:
             (f.f_code.co_filename, f.f_lineno, f.f_code.co_name, None)
         )
