@@ -98,7 +98,7 @@ class MLP(t.nn.Module):
 
         self.class_weights = t.tensor(
             class_weights if class_weights
-            else np.repeat(1., output_size)
+            else np.repeat(np.float32(1.), output_size)
         )
 
         if bnn:
