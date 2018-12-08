@@ -110,6 +110,9 @@ def main():
         log(INFO, 'restoring state from %s', state)
         network = state['network']
         optimizer = state['optimizer']
+        del opts['num_hidden']
+        del opts['hidden_size']
+        del opts['bnn']
     else:
         log(INFO, 'initializing network')
         signal_frac = np.sum(data.metadata.signal) / len(data.metadata)
