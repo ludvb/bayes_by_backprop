@@ -121,7 +121,7 @@ def main():
             bnn=opts.pop('bnn'),
             class_weights=[1 / (1 - signal_frac), 1 / signal_frac],
         ).to(get_device())
-        optimizer = t.optim.Adam(network.parameters())  # , lr=1e-5)
+        optimizer = t.optim.Adam(network.parameters())
 
     try:
         run(
