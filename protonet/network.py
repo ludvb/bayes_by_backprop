@@ -59,14 +59,7 @@ class BNNLinear(Linear):
 
 
 def mle_loss(network, outputs, labels, class_weights):
-    return -(
-        t.sum(
-            class_weights[labels]
-            * t.log(outputs[range(len(outputs)), labels]),
-        )
-        /
-        t.sum(class_weights[labels])
-    )
+    return t.nn.functional.nll_loss(outputs, labels, class_weights)
 
 
 def bnn_loss(network, outputs, labels, class_weights):
@@ -134,7 +127,7 @@ class MLP(t.nn.Module):
                 activation,
             ] for _ in range(num_hidden)]),
             layer_type(hidden_size, output_size),
-            t.nn.Softmax(dim=1),
+            t.nn.LogSoftmax(dim=1),
         )
 
     def to(self, *args, **kwargs):
