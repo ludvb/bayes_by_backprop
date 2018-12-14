@@ -16,7 +16,7 @@ from .dataset import SignalProteins
 from .logging import DEBUG, ERROR, INFO, log, set_level
 from .network import MLP
 from .train import train
-from .utils import get_device
+from .utils import get_device, restore_state
 
 
 def main():
@@ -108,6 +108,7 @@ def main():
     state = opts.pop('state')
     if state:
         log(INFO, 'restoring state from %s', state)
+        state = restore_state(state)
         network = state['network']
         optimizer = state['optimizer']
         del opts['num_hidden']
