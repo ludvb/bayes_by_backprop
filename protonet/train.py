@@ -27,7 +27,7 @@ def train(
         data: DataLoader,
         checkpoint_path: str,
         nepochs: Optional[int] = None,
-        k_fold_split: int = 10,
+        validation_prop: float = 0.1,
 ):
     def _interrupt_handler(*_):
         from multiprocessing import current_process
@@ -85,6 +85,28 @@ def train(
     def _valid_step(x):
         return network(x)
 
+    log(INFO, 'performing validation split...')
+    train_set_idxs = np.random.choice(
+        len(data),
+        int((1 - validation_prop) * len(data)),
+        replace=False,
+    )
+    valid_set_idxs = np.setdiff1d(range(len(data)), train_set_idxs)
+    train_set = DataLoader(
+        Subset(data, train_set_idxs),
+        shuffle=False,
+        batch_size=2048,
+        num_workers=len(os.sched_getaffinity(0)),
+    )
+    valid_set = DataLoader(
+        Subset(data, valid_set_idxs),
+        shuffle=False,
+        batch_size=2048,
+        num_workers=len(os.sched_getaffinity(0)),
+    )
+    log(INFO, 'training validation set is of size %d (%d)',
+        len(train_set), len(valid_set))
+
     @with_interrupt_handler(_interrupt_handler)
     def _run_training_loop():
         best_loss: float = float('inf')
@@ -95,26 +117,6 @@ def train(
         ):
             log(INFO, 'starting epoch %d of %s...', epoch,
                 str(nepochs) if nepochs else 'inf')
-
-            log(INFO, 'performing %d-fold split...', k_fold_split)
-            train_set_idxs = np.random.choice(
-                len(data),
-                int((1 - 1 / k_fold_split) * len(data)),
-                replace=False,
-            )
-            valid_set_idxs = np.setdiff1d(range(len(data)), train_set_idxs)
-            train_set = DataLoader(
-                Subset(data, train_set_idxs),
-                shuffle=False,
-                batch_size=2048,
-                num_workers=len(os.sched_getaffinity(0)),
-            )
-            valid_set = DataLoader(
-                Subset(data, valid_set_idxs),
-                shuffle=False,
-                batch_size=2048,
-                num_workers=len(os.sched_getaffinity(0)),
-            )
 
             log(INFO, 'performing training steps...')
             network.train()
