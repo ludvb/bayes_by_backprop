@@ -53,7 +53,7 @@ def store_state(
 
 def restore_state(state_dict: dict) -> dict:
     dev = get_device()
-    state_dict['network'].to(dev)
+    state_dict['network'] = state_dict['network'].to(dev)
     for weight_params in state_dict['optimizer'].state.values():
         param: t.Tensor
         for param in filter(t.is_tensor, weight_params.values()):
