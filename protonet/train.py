@@ -1,6 +1,9 @@
+from collections import OrderedDict
+
 import itertools as it
 
 import os
+import os.path as osp
 
 from typing import Any, Callable, List, Optional, Tuple
 
@@ -13,7 +16,13 @@ from torch.utils.data.dataset import Subset
 
 from tqdm import tqdm
 
-from .utils import get_device, store_state, with_interrupt_handler
+from .utils import (
+    get_device,
+    make_csv_writer,
+    store_state,
+    with_interrupt_handler,
+)
+
 from .logging import INFO, log
 
 
@@ -25,10 +34,16 @@ def train(
         network: t.nn.Module,
         optimizer: Optimizer,
         data: DataLoader,
-        checkpoint_path: str,
+        output_prefix: str,
         nepochs: Optional[int] = None,
         validation_prop: float = 0.1,
 ):
+    try:
+        os.makedirs(output_prefix)
+        os.makedirs(osp.join(output_prefix, 'checkpoints'))
+    except OSError as e:
+        raise RuntimeError(f'failed to create output directory ({e})')
+
     def _interrupt_handler(*_):
         from multiprocessing import current_process
         if current_process().name == 'MainProcess':
@@ -38,7 +53,7 @@ def train(
         store_state(
             network=network,
             optimizer=optimizer,
-            path=checkpoint_path,
+            path=osp.join(output_prefix, 'checkpoints'),
             prefix=name,
         )
 
@@ -69,7 +84,11 @@ def train(
             log(INFO, 'average accuracy=%2.1f', 100 * np.mean(accuracy))
             log(INFO, 'average wt. accuracy=%2.1f',
                 100 * np.mean(weighted_accuracy))
-            return loss, accuracy, weighted_accuracy
+            return {
+                'loss': loss,
+                'accuracy': accuracy,
+                'weighted accuracy': weighted_accuracy,
+            }
 
         return _wrapper
 
@@ -107,6 +126,11 @@ def train(
     log(INFO, 'training validation set is of size %d (%d)',
         len(train_set), len(valid_set))
 
+    write_data = make_csv_writer(
+        osp.join(output_prefix, 'training_data.csv'),
+        ['epoch', 'iteration', 'validation', 'type', 'value'],
+    )
+
     @with_interrupt_handler(_interrupt_handler)
     def _run_training_loop():
         best_loss: float = float('inf')
@@ -121,17 +145,29 @@ def train(
             log(INFO, 'performing training steps...')
             network.train()
             t.enable_grad()
-            _, _, _ = _train_step(train_set)
+            train_data = _train_step(train_set)
 
             log(INFO, 'performing validation steps...')
             network.eval()
             t.no_grad()
-            loss, _, _ = _valid_step(valid_set)
+            valid_data = _valid_step(valid_set)
 
-            avg_loss = np.mean(loss)
+            avg_loss = np.mean(valid_data['loss'])
             if best_loss > avg_loss:
                 best_loss = avg_loss
-                checkpoint()
+                checkpoint(f'epoch-{epoch:03d}')
+
+            log(INFO, 'writing training data')
+            for validation, data in ((0, train_data), (1, valid_data)):
+                for k, vs in data.items():
+                    for i, v in enumerate(vs):
+                        write_data(OrderedDict([
+                            ('epoch', epoch),
+                            ('iteration', i),
+                            ('validation', validation),
+                            ('type', k),
+                            ('value', v),
+                        ]))
 
     try:
         _run_training_loop()

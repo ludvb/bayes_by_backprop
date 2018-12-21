@@ -1,4 +1,6 @@
-from typing import Optional
+from collections import OrderedDict
+
+from typing import List, Optional
 
 import torch as t
 from torch.optim.optimizer import Optimizer
@@ -30,16 +32,13 @@ def store_state(
         path: str,
         prefix: Optional[str] = None,
 ) -> None:
-    import datetime as dt
     import os.path as osp
     from .logging import INFO, log
 
     if not prefix:
         prefix = 'checkpoint'
 
-    name = f'{prefix}-{dt.datetime.now().isoformat()}'
-
-    filename = osp.join(path, f'{name}.pkl')
+    filename = osp.join(path, f'{prefix}.pkl')
     log(INFO, 'saving state to %s...', filename)
 
     t.save(
@@ -59,3 +58,30 @@ def restore_state(state_dict: dict) -> dict:
         for param in filter(t.is_tensor, weight_params.values()):
             param.data = param.to(dev)
     return state_dict
+
+
+def make_csv_writer(
+        path: str,
+        headers: List[str],
+):
+    with open(path, 'w') as f:
+        f.write(','.join(headers) + '\n')
+
+    def _write_data(data: OrderedDict):
+        def _checkvalue(x):
+            k, (k_, v) = x
+            if k != k_:
+                raise ValueError(
+                    'failed to write csv data '
+                    f'(column name mismatch: "{k}" != "{k_}")'
+                )
+            return str(v)
+
+        with open(path, 'a') as f:
+            f.write(
+                ','.join(map(_checkvalue, zip(headers, data.items())))
+                +
+                '\n'
+            )
+
+    return _write_data
