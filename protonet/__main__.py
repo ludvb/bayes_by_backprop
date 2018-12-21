@@ -2,6 +2,10 @@
 
 import argparse as ap
 
+from datetime import datetime as dt
+
+import os.path as osp
+
 import sys
 
 import numpy as np
@@ -20,8 +24,6 @@ from .utils import get_device, restore_state
 
 
 def main():
-    from tempfile import gettempdir
-
     args = ap.ArgumentParser(
         description=f'Version: {__version__:s}',
         formatter_class=ap.RawTextHelpFormatter,
@@ -63,10 +65,13 @@ def main():
         dest='nepochs',
     )
     train_parser.add_argument(
-        '--checkpoint-path',
+        '--output-prefix',
         type=str,
-        default=gettempdir(),
-        help='checkpoint path',
+        default=osp.join(
+            osp.abspath(osp.curdir),
+            f'protonet-{dt.now().isoformat()}',
+        ),
+        help='where to store the output files',
     )
 
     apply_parser.add_argument('data', type=str)
