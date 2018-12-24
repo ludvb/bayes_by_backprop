@@ -55,9 +55,14 @@ def main():
         default=100,
     )
     train_parser.add_argument(
-        '--bnn',
+        '--mle',
         action='store_true',
-        help='use variational weights',
+        help='optimize by maximum likelihood',
+    )
+    train_parser.add_argument(
+        '--learn-prior',
+        action='store_true',
+        help='optimize prior parameters',
     )
     train_parser.add_argument(
         '--epochs',
@@ -118,19 +123,35 @@ def main():
         optimizer = state['optimizer']
         del opts['num_hidden']
         del opts['hidden_size']
-        del opts['bnn']
     else:
         log(INFO, 'initializing network')
         signal_frac = np.sum(data.metadata.signal) / len(data.metadata)
+        if opts.pop('mle'):
+            from .network import Uninformative, Deterministic
+            prior_distribution = Uninformative
+            prior_kwargs = None
+            variational_distribution = Deterministic
+            variational_kwargs = None
+        else:
+            from .network import Normal, NormalMixture
+            from .network import Uninformative, Deterministic
+            prior_distribution = NormalMixture
+            prior_kwargs = None
+            variational_distribution = Normal
+            variational_kwargs = None
         network = MLP(
             input_size=len(data[0]['input']),
             output_size=2,
             num_hidden=opts.pop('num_hidden'),
             hidden_size=opts.pop('hidden_size'),
-            bnn=opts.pop('bnn'),
-            class_weights=[1 / (1 - signal_frac), 1 / signal_frac],
+            prior_distribution=prior_distribution,
+            prior_kwargs=prior_kwargs,
+            variational_distribution=variational_distribution,
+            variational_kwargs=variational_kwargs,
+            class_weights=[0.5 / (1 - signal_frac), 0.5 / signal_frac],
+            learn_prior=opts.pop('learn_prior'),
         ).to(get_device())
-        optimizer = t.optim.Adam(network.parameters())
+        optimizer = t.optim.Adam(network.parameters(), lr=1e-2)
 
     try:
         run(

@@ -85,3 +85,14 @@ def make_csv_writer(
             )
 
     return _write_data
+
+
+def zip_dicts(ds: List[dict]) -> dict:
+    d = {k: [] for k in ds[0].keys()}
+    for d_ in ds:
+        for k, v in d_.items():
+            try:
+                d[k].append(v)
+            except AttributeError:
+                raise ValueError('dict keys are inconsistent')
+    return d

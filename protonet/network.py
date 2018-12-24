@@ -1,4 +1,8 @@
-from functools import partial, reduce
+from abc import abstractmethod
+
+from collections import OrderedDict
+
+from functools import reduce
 
 import operator as op
 
@@ -9,78 +13,127 @@ import numpy as np
 import torch as t
 from torch.nn import init
 
+from .logging import log, DEBUG
+
+
+FLOAT_MAX = 1e10
+
+
+class SamplingError(Exception):
+    pass
+
+
+class Distribution(t.nn.Module):
+    def __init__(self, shape):
+        super().__init__()
+        self.shape = shape
+
+    @abstractmethod
+    def sample(self):
+        pass
+
+    @abstractmethod
+    def p(self, x):
+        pass
+
+
+class Normal(Distribution):
+    def __init__(self, shape, loc=None, scale=None):
+        loc = t.as_tensor(loc or 0.)
+        scale = t.as_tensor(scale or 0.)
+        super().__init__(shape)
+        [self.loc, self.scale_] = [
+            t.nn.Parameter(t.ones(self.shape) * x.detach())
+            for x in (loc, scale)
+        ]
+
+    @property
+    def scale(self):
+        return t.nn.functional.softplus(self.scale_)
+
+    def sample(self):
+        return self.loc + self.scale * t.randn_like(self.scale)
+
+    def p(self, x):
+        return t.distributions.Normal(self.loc, self.scale).log_prob(x)
+
+
+class NormalMixture(Distribution):
+    def __init__(self, shape, loc1=None, scale1=None, loc2=None, scale2=None):
+        loc1 = t.as_tensor(loc1 or 0.)
+        scale1 = t.as_tensor(scale1 or -2.)
+        loc2 = t.as_tensor(loc2 or 0.)
+        scale2 = t.as_tensor(scale2 or 10.)
+        super().__init__(shape)
+        self.d1 = Normal(shape, loc1, scale1)
+        self.d2 = Normal(shape, loc2, scale2)
+
+    def sample(self):
+        if np.random.uniform() > 0.5:
+            return self.d1.sample()
+        return self.d2.sample()
+
+    def p(self, x):
+        return (
+            np.log(0.5)
+            +
+            t.logsumexp(
+                t.cat((self.d1.p(x)[None, ...], self.d2.p(x)[None, ...])),
+                dim=0,
+            )
+        )
+
+
+class Uninformative(Distribution):
+    def sample(self):
+        raise SamplingError(
+            'attempted to sample from uninformative distribution!')
+
+    def p(self, x):
+        return FLOAT_MAX * t.ones(self.shape, requires_grad=False).to(x)
+
+
+class Deterministic(Distribution):
+    def __init__(self, shape, x=None):
+        super().__init__(shape)
+        if x is None:
+            x = t.tensor(0.)
+        self.x = t.nn.Parameter(
+            t.as_tensor(x).clone().detach() * t.ones(shape))
+
+    def sample(self):
+        return self.x
+
+    def p(self, x):
+        return (FLOAT_MAX *
+                (1 - 2 * t.ones(self.shape, requires_grad=False).to(x) *
+                 (x != self.x).float()))
+
 
 class Linear(t.nn.Module):
-    def __init__(self, in_features: int, out_features: int):
+    def __init__(
+            self,
+            prior_w: Distribution,
+            prior_b: Distribution,
+            variational_w: Distribution,
+            variational_b: Distribution,
+            learn_prior: bool = False,
+    ):
         super().__init__()
-        self.weights = t.Tensor(in_features, out_features)
-        self.bias = t.Tensor(out_features)
+        self.prior_w = prior_w
+        self.prior_b = prior_b
+        self.variational_w = variational_w
+        self.variational_b = variational_b
+        self.w, self.b = None, None
+        if not learn_prior:
+            for d in (self.prior_w, self.prior_b):
+                for p in d.parameters():
+                    p.requires_grad = False
 
-    def forward(self, x) -> t.Tensor:
-        return (x @ self.weights) + self.bias
-
-
-class MLELinear(Linear):
-    def __init__(self, in_features: int, out_features: int):
-        super().__init__(in_features, out_features)
-        self.weights = t.nn.Parameter(self.weights)
-        self.bias = t.nn.Parameter(self.bias)
-        self.reset_parameters()
-
-    def reset_parameters(self):
-        init.kaiming_uniform_(self.weights, a=np.sqrt(5))
-        self.bias.data[...] = 0.
-
-
-class BNNLinear(Linear):
-    def __init__(self, in_features: int, out_features: int):
-        super().__init__(in_features, out_features)
-        self.w_mu = t.nn.Parameter(t.Tensor(*self.weights.shape))
-        self.w_sd = t.nn.Parameter(t.Tensor(*self.weights.shape))
-
-        self.b_mu = t.nn.Parameter(t.Tensor(*self.bias.shape))
-        self.b_sd = t.nn.Parameter(t.Tensor(*self.bias.shape))
-
-        self.reset_parameters()
-
-    def reset_parameters(self):
-        init.kaiming_uniform_(self.w_mu, a=np.sqrt(5))
-        self.b_mu.data[...] = 0.
-
-        self.w_sd.data[...] = -100.
-        self.b_sd.data[...] = -100.
-
-    def forward(self, x: t.Tensor) -> t.Tensor:
-        self.weights = (
-            self.w_mu + t.log(1 + t.exp(self.w_sd)) * t.randn_like(self.w_sd))
-        self.bias = (
-            self.b_mu + t.log(1 + t.exp(self.b_sd)) * t.randn_like(self.b_sd))
-        return super().forward(x)
-
-
-def mle_loss(network, outputs, labels, class_weights):
-    return t.nn.functional.nll_loss(outputs, labels, class_weights)
-
-
-def bnn_loss(network, outputs, labels, class_weights):
-    return (
-        mle_loss(network, outputs, labels, class_weights) +
-        reduce(
-            op.add,
-            ((
-                t.sum(
-                    t.distributions.kl_divergence(
-                        t.distributions.Normal(layer.w_mu, layer.w_sd),
-                        t.distributions.Normal(0., 1.),
-                    ))
-                +
-                t.sum(
-                    t.distributions.kl_divergence(
-                        t.distributions.Normal(layer.b_mu, layer.b_sd),
-                        t.distributions.Normal(0., 1.),
-                    ))
-            ) for layer in network._forward if isinstance(layer, BNNLinear))
-        ))
+    def forward(self, x):
+        self.w = self.variational_w.sample()
+        self.b = self.variational_b.sample()
+        return x @ self.w + self.b
 
 
 class MLP(t.nn.Module):
@@ -90,49 +143,72 @@ class MLP(t.nn.Module):
             output_size: int,
             num_hidden: int,
             hidden_size: int,
-            bnn: bool = False,
             class_weights: Optional[List[float]] = None,
             activation: Optional[t.nn.Module] = None,
+            prior_distribution: type = Uninformative,
+            prior_kwargs: Optional[dict] = None,
+            variational_distribution: type = Deterministic,
+            variational_kwargs: Optional[dict] = None,
+            **kwargs,
     ):
-        super().__init__()
-
-        self.class_weights = t.tensor(
-            class_weights if class_weights
-            else np.repeat(np.float32(1.), output_size)
-        )
-
-        if bnn:
-            layer_type = BNNLinear
-            self._loss = partial(
-                bnn_loss,
-                self,
-                class_weights=self.class_weights,
-            )
-        else:
-            layer_type = MLELinear
-            self._loss = partial(
-                mle_loss,
-                self,
-                class_weights=self.class_weights,
-            )
+        if class_weights is None:
+            class_weights = np.repeat(1., output_size)
 
         if activation is None:
             activation = t.nn.LeakyReLU(inplace=True)
 
+        if prior_kwargs is None:
+            prior_kwargs = {}
+
+        if variational_kwargs is None:
+            variational_kwargs = {}
+
+        super().__init__()
+
+        self.class_weights = t.nn.Parameter(
+            t.as_tensor(class_weights).float(), requires_grad=False)
+        log(DEBUG, 'class weights: %s',
+            ' | '.join([f'{i:4d}' for i in range(len(self.class_weights))]))
+        log(DEBUG, '               %s',
+            ' | '.join([f'{w:1.2f}' for w in self.class_weights]))
+
+        log(DEBUG, 'prior distribution=%s(%s)', prior_distribution.__name__,
+            ','.join([f'{a}={b}' for a, b in prior_kwargs]))
+        log(DEBUG, 'variational distribution=%s(%s)',
+            variational_distribution.__name__, ','.join(
+                [f'{a}={b}' for a, b in variational_kwargs.items()]))
+
+        self.layers = []
+
+        w_prior = prior_distribution((1, ), **variational_kwargs)
+        b_prior = prior_distribution((1, ), **variational_kwargs)
+
+        def _make_layer(in_size, out_size):
+            layer = Linear(
+                w_prior, b_prior,
+                variational_distribution((in_size, out_size), **prior_kwargs),
+                variational_distribution((out_size, ), **prior_kwargs),
+                **kwargs,
+            )
+
+            # if the variational distribution is deterministic, we need to
+            # break symmetry by applying some jitter to the weights
+            if variational_distribution == Deterministic:
+                init.kaiming_uniform_(layer.variational_w.x, a=np.sqrt(5))
+
+            self.layers.append(layer)
+            return layer
+
         self._forward = t.nn.Sequential(
-            layer_type(input_size, hidden_size),
+            _make_layer(input_size, hidden_size),
             activation,
             *reduce(op.add, [[
-                layer_type(hidden_size, hidden_size),
+                _make_layer(hidden_size, hidden_size),
                 activation,
             ] for _ in range(num_hidden)]),
-            layer_type(hidden_size, output_size),
+            _make_layer(hidden_size, output_size),
             t.nn.LogSoftmax(dim=1),
         )
-
-    def to(self, *args, **kwargs):
-        self.class_weights.data = self.class_weights.to(*args, **kwargs)
-        return super().to(*args, **kwargs)
 
     def forward(self, x):
         inputs = x['input']
@@ -140,16 +216,24 @@ class MLP(t.nn.Module):
 
         y = self._forward(inputs)
 
-        return dict(
+        likelihood_loss = t.nn.functional.nll_loss(
+            y, labels, self.class_weights)
+        prior_loss = sum([
+            t.sum(l.variational_w.p(l.w) - l.prior_w.p(l.w))
+            +
+            t.sum(l.variational_b.p(l.b) - l.prior_b.p(l.b))
+            for l in self.layers
+        ])
+
+        return OrderedDict(
             prediction=y,
-            accuracy=t.mean((t.argmax(y, dim=1) == labels).float()).item(),
-            weighted_accuracy=(
-                t.sum(
-                    self.class_weights[labels]
-                    * (t.argmax(y, dim=1) == labels).float(),
-                ).item()
-                /
-                t.sum(self.class_weights[labels]).item()
-            ),
-            loss=self._loss(y, labels),
+            loss=likelihood_loss + prior_loss,
+            acc=t.mean((t.argmax(y, dim=1) == labels).float()),
+            wt_acc=t.sum(
+                (t.argmax(y, dim=1) == labels).float()
+                *
+                self.class_weights[labels]
+            ) / t.sum(self.class_weights[labels]),
+            px=-likelihood_loss,
+            dqp=prior_loss,
         )

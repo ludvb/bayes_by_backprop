@@ -21,6 +21,7 @@ from .utils import (
     make_csv_writer,
     store_state,
     with_interrupt_handler,
+    zip_dicts,
 )
 
 from .logging import INFO, log
@@ -61,35 +62,42 @@ def train(
 
     def _step_function(step_func) -> Callable[[Any], None]:
         def _wrapper(data_generator) -> Tuple[List[float], List[float]]:
+            results: List[dict] = []
+
+            def _append_results(d):
+                d_ = {}
+                for k, v in d.items():
+                    try:
+                        d_[k] = v.item()
+                    except (ValueError, AttributeError):
+                        pass
+                results.append(d_)
+
+            def _fmt(k, v):
+                return (
+                    f'{k}: {v:.5f}'
+                    if abs(v) < 10 or abs(v) < 0.10 else
+                    f'{k}: {v:.2e}'
+                )
+
             data_tracker = tqdm(data_generator, dynamic_ncols=True)
-            loss: List[float] = []
-            accuracy: List[float] = []
-            weighted_accuracy: List[float] = []
             for x in data_tracker:
                 y = step_func({
                     k: v.to(device) if isinstance(v, t.Tensor) else v
                     for k, v in x.items()
                 })
-                loss += [y['loss'].item()]
-                accuracy += [y['accuracy']]
-                weighted_accuracy += [y['weighted_accuracy']]
+                _append_results(y)
                 data_tracker.set_description(
-                    ' / '.join([
-                        f'loss: {np.mean(loss):.4e}',
-                        f'acc: {np.mean(accuracy) * 100:.1f} %',
-                        f'wt.acc: {np.mean(weighted_accuracy) * 100:.1f} %',
-                    ]),
+                    ' / '.join([_fmt(k, v) for k, v in results[-1].items()]),
                 )
-            log(INFO, 'average loss=%.4e', np.mean(loss))
-            log(INFO, 'average accuracy=%2.1f', 100 * np.mean(accuracy))
-            log(INFO, 'average wt. accuracy=%2.1f',
-                100 * np.mean(weighted_accuracy))
-            return {
-                'loss': loss,
-                'accuracy': accuracy,
-                'weighted accuracy': weighted_accuracy,
-            }
 
+            results_ = zip_dicts(results)
+            log(INFO, 'means: %s', ', '.join([
+                _fmt(k, m)
+                for k, v in results_.items() for m in (np.mean(v),)
+            ]))
+
+            return results_
         return _wrapper
 
     @_step_function
