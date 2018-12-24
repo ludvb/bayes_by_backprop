@@ -70,6 +70,11 @@ def main():
         dest='nepochs',
     )
     train_parser.add_argument(
+        '--learning-rate',
+        type=float,
+        default=5e-3,
+    )
+    train_parser.add_argument(
         '--output-prefix',
         type=str,
         default=osp.join(
@@ -151,7 +156,8 @@ def main():
             class_weights=[0.5 / (1 - signal_frac), 0.5 / signal_frac],
             learn_prior=opts.pop('learn_prior'),
         ).to(get_device())
-        optimizer = t.optim.Adam(network.parameters(), lr=1e-2)
+        optimizer = t.optim.Adam(
+            network.parameters(), lr=opts.pop('learning_rate'))
 
     try:
         run(
