@@ -38,6 +38,7 @@ def train(
         output_prefix: str,
         nepochs: Optional[int] = None,
         validation_prop: float = 0.1,
+        update_samples: int = 1,
 ):
     try:
         os.makedirs(output_prefix)
@@ -58,20 +59,20 @@ def train(
             prefix=name,
         )
 
+    def _collect_items(d):
+        d_ = {}
+        for k, v in d.items():
+            try:
+                d_[k] = v.item()
+            except (ValueError, AttributeError):
+                pass
+        return d_
+
     device = get_device()
 
     def _step_function(step_func) -> Callable[[Any], None]:
         def _wrapper(data_generator) -> Tuple[List[float], List[float]]:
             results: List[dict] = []
-
-            def _append_results(d):
-                d_ = {}
-                for k, v in d.items():
-                    try:
-                        d_[k] = v.item()
-                    except (ValueError, AttributeError):
-                        pass
-                results.append(d_)
 
             def _fmt(k, v):
                 return (
@@ -86,10 +87,9 @@ def train(
                     k: v.to(device) if isinstance(v, t.Tensor) else v
                     for k, v in x.items()
                 })
-                _append_results(y)
+                results.append(_collect_items(y))
                 data_tracker.set_description(
-                    ' / '.join([_fmt(k, v) for k, v in results[-1].items()]),
-                )
+                    ' / '.join([_fmt(k, v) for k, v in results[-1].items()]))
 
             results_ = zip_dicts(results)
             log(INFO, 'means: %s', ', '.join([
@@ -103,10 +103,13 @@ def train(
     @_step_function
     def _train_step(x):
         optimizer.zero_grad()
-        y = network(x)
-        y['loss'].backward()
+        results: List[dict] = []
+        for _ in range(update_samples):
+            y = network(x)
+            results.append(_collect_items(y))
+            y['loss'].backward()
         optimizer.step()
-        return y
+        return {k: np.mean(v) for k, v in zip_dicts(results).items()}
 
     @_step_function
     def _valid_step(x):

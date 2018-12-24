@@ -120,6 +120,7 @@ def main():
         ).drop('sequence', axis=1),
     )
 
+    mle = opts.pop('mle')
     state = opts.pop('state')
     if state:
         log(INFO, 'restoring state from %s', state)
@@ -131,7 +132,7 @@ def main():
     else:
         log(INFO, 'initializing network')
         signal_frac = np.sum(data.metadata.signal) / len(data.metadata)
-        if opts.pop('mle'):
+        if mle:
             from .network import Uninformative, Deterministic
             prior_distribution = Uninformative
             prior_kwargs = None
@@ -164,6 +165,7 @@ def main():
             network,
             optimizer,
             data,
+            update_samples=1 if mle else 10,
             **opts,
         )
     except Exception as err:  # pylint: disable=broad-except
