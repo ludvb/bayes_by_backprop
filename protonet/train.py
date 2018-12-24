@@ -131,7 +131,7 @@ def train(
         batch_size=2048,
         num_workers=len(os.sched_getaffinity(0)),
     )
-    log(INFO, 'training validation set is of size %d (%d)',
+    log(INFO, 'training (validation) set is of size %d (%d)',
         len(train_set), len(valid_set))
 
     write_data = make_csv_writer(
