@@ -179,6 +179,7 @@ def main():
             prior_kwargs=prior_kwargs,
             variational_distribution=variational_distribution,
             variational_kwargs=variational_kwargs,
+            dataset_size=len(training_set_idxs),
             class_weights=[0.5 / (1 - signal_frac), 0.5 / signal_frac],
             learn_prior=opts.pop('learn_prior'),
         ).to(get_device())
