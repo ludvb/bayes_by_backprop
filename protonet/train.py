@@ -12,7 +12,6 @@ import numpy as np
 import torch as t
 from torch.optim.optimizer import Optimizer
 from torch.utils.data import DataLoader
-from torch.utils.data.dataset import Subset
 
 from tqdm import tqdm
 
@@ -34,10 +33,10 @@ class Interrupt(Exception):
 def train(
         network: t.nn.Module,
         optimizer: Optimizer,
-        data: DataLoader,
+        training_set: DataLoader,
+        validation_set: DataLoader,
         output_prefix: str,
         nepochs: Optional[int] = None,
-        validation_prop: float = 0.1,
         update_samples: int = 1,
 ):
     try:
@@ -115,28 +114,6 @@ def train(
     def _valid_step(x):
         return network(x)
 
-    log(INFO, 'performing validation split...')
-    train_set_idxs = np.random.choice(
-        len(data),
-        int((1 - validation_prop) * len(data)),
-        replace=False,
-    )
-    valid_set_idxs = np.setdiff1d(range(len(data)), train_set_idxs)
-    train_set = DataLoader(
-        Subset(data, train_set_idxs),
-        shuffle=False,
-        batch_size=2048,
-        num_workers=len(os.sched_getaffinity(0)),
-    )
-    valid_set = DataLoader(
-        Subset(data, valid_set_idxs),
-        shuffle=False,
-        batch_size=2048,
-        num_workers=len(os.sched_getaffinity(0)),
-    )
-    log(INFO, 'training (validation) set is of size %d (%d)',
-        len(train_set), len(valid_set))
-
     write_data = make_csv_writer(
         osp.join(output_prefix, 'training_data.csv'),
         ['epoch', 'iteration', 'validation', 'type', 'value'],
@@ -156,12 +133,12 @@ def train(
             log(INFO, 'performing training steps...')
             network.train()
             t.enable_grad()
-            train_data = _train_step(train_set)
+            train_data = _train_step(training_set)
 
             log(INFO, 'performing validation steps...')
             network.eval()
             t.no_grad()
-            valid_data = _valid_step(valid_set)
+            valid_data = _valid_step(validation_set)
 
             avg_loss = np.mean(valid_data['loss'])
             if best_loss > avg_loss:
