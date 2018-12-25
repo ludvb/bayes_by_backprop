@@ -143,6 +143,7 @@ class MLP(t.nn.Module):
             output_size: int,
             num_hidden: int,
             hidden_size: int,
+            dataset_size: int,
             class_weights: Optional[List[float]] = None,
             activation: Optional[t.nn.Module] = None,
             prior_distribution: type = Uninformative,
@@ -164,6 +165,9 @@ class MLP(t.nn.Module):
             variational_kwargs = {}
 
         super().__init__()
+
+        self.dataset_size = dataset_size
+        log(DEBUG, 'dataset size: %d', self.dataset_size)
 
         self.class_weights = t.nn.Parameter(
             t.as_tensor(class_weights).float(), requires_grad=False)
@@ -218,12 +222,16 @@ class MLP(t.nn.Module):
 
         likelihood_loss = t.nn.functional.nll_loss(
             y, labels, self.class_weights)
-        prior_loss = sum([
-            t.sum(l.variational_w.p(l.w) - l.prior_w.p(l.w))
-            +
-            t.sum(l.variational_b.p(l.b) - l.prior_b.p(l.b))
-            for l in self.layers
-        ])
+        prior_loss = (
+            len(y) / self.dataset_size
+            *
+            sum([
+                t.sum(l.variational_w.p(l.w) - l.prior_w.p(l.w))
+                +
+                t.sum(l.variational_b.p(l.b) - l.prior_b.p(l.b))
+                for l in self.layers
+            ])
+        )
 
         return OrderedDict(
             prediction=y,
