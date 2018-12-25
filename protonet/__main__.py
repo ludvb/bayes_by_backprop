@@ -4,6 +4,7 @@ import argparse as ap
 
 from datetime import datetime as dt
 
+import os
 import os.path as osp
 
 import sys
@@ -13,6 +14,8 @@ import numpy as np
 import pandas as pd
 
 import torch as t
+from torch.utils.data import DataLoader
+from torch.utils.data.dataset import Subset
 
 from . import __version__
 from .apply import apply
@@ -120,6 +123,28 @@ def main():
         ).drop('sequence', axis=1),
     )
 
+    log(INFO, 'performing validation split...')
+    training_set_idxs = np.random.choice(
+        len(data),
+        int(0.9 * len(data)),
+        replace=False,
+    )
+    validation_set_idxs = np.setdiff1d(range(len(data)), training_set_idxs)
+    training_set = DataLoader(
+        Subset(data, training_set_idxs),
+        shuffle=False,
+        batch_size=2048,
+        num_workers=len(os.sched_getaffinity(0)),
+    )
+    validation_set = DataLoader(
+        Subset(data, validation_set_idxs),
+        shuffle=False,
+        batch_size=2048,
+        num_workers=len(os.sched_getaffinity(0)),
+    )
+    log(INFO, 'training (validation) set is of size %d (%d)',
+        len(training_set), len(validation_set))
+
     mle = opts.pop('mle')
     state = opts.pop('state')
     if state:
@@ -164,7 +189,8 @@ def main():
         run(
             network,
             optimizer,
-            data,
+            training_set,
+            validation_set,
             update_samples=1 if mle else 10,
             **opts,
         )
