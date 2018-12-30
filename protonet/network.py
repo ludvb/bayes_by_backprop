@@ -214,7 +214,7 @@ class Network(t.nn.Module):
         y = self._forward(inputs)
 
         likelihood_loss = t.nn.functional.nll_loss(
-            y, labels, self.class_weights)
+            y, labels, self.class_weights, reduction='sum')
         prior_loss = (
             len(y) / self.dataset_size
             *
