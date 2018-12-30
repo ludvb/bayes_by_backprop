@@ -19,9 +19,9 @@ from torch.utils.data.dataset import Subset
 
 from . import __version__
 from .apply import apply
-from .dataset import SignalProteins
-from .logging import DEBUG, ERROR, INFO, log, set_level
-from .network import MLP
+from .dataset import WordBags, Sequences, make_sequence_loader
+from .logging import DEBUG, ERROR, INFO, WARNING, log, set_level
+from .network import LSTM, MLP
 from .train import train
 from .utils import get_device, restore_state
 
@@ -45,7 +45,16 @@ def main():
     )
 
     train_parser.add_argument('data_file', metavar='data', type=str)
-    train_parser.add_argument('metadata_file', metavar='metadata', type=str)
+    train_parser.add_argument(
+        '--wordbags',
+        dest='wordbags_file',
+        type=str,
+        help='. '.join([
+            'file with wordbags.',
+            'if specified, will train bag of words model.',
+            'otherwise, train LSTM model.',
+        ])
+    )
     train_parser.add_argument('--state', type=t.load)
     train_parser.add_argument(
         '--num-hidden',
@@ -107,45 +116,70 @@ def main():
 
     log(INFO, 'using device: "%s"', str(get_device().type))
 
+    if opts.pop('mle'):
+        from .network import Deterministic, Uninformative
+        prior_distribution = Uninformative
+        prior_kwargs = None
+        variational_distribution = Deterministic
+        variational_kwargs = None
+        update_samples = 1
+    else:
+        from .network import Normal, NormalMixture
+        prior_distribution = NormalMixture
+        prior_kwargs = None
+        variational_distribution = Normal
+        variational_kwargs = None
+        update_samples = 10
+
     log(DEBUG, 'reading data...')
-    data = SignalProteins(
-        pd.read_csv(
-            opts.pop('data_file'),
-            sep='\t',
-            header=0,
-            index_col=0,
-        ),
-        pd.read_csv(
-            opts.pop('metadata_file'),
-            sep='\t',
-            header=0,
-            index_col=0,
-        ).drop('sequence', axis=1),
+    data = pd.read_csv(
+        opts.pop('data_file'),
+        sep='\t',
+        header=0,
+        index_col=0,
     )
+
+    bagofwords = opts.pop('wordbags_file')
+    if bagofwords:
+        log(DEBUG, 'reading word bags...')
+        wordbags = pd.read_csv(
+            bagofwords,
+            sep='\t',
+            header=0,
+            index_col=0,
+        )
+        dataset = WordBags(wordbags, data.drop('sequence', axis=1))
+        _loader_factory = DataLoader
+        batch_size = 2048
+    else:
+        dataset = Sequences(data=data)
+        _loader_factory = make_sequence_loader
+        batch_size = 16
+
+    log(INFO, 'batch size is set to %d', batch_size)
 
     log(INFO, 'performing validation split...')
     training_set_idxs = np.random.choice(
-        len(data),
-        int(0.9 * len(data)),
+        len(dataset),
+        int(0.9 * len(dataset)),
         replace=False,
     )
-    validation_set_idxs = np.setdiff1d(range(len(data)), training_set_idxs)
-    training_set = DataLoader(
-        Subset(data, training_set_idxs),
+    validation_set_idxs = np.setdiff1d(range(len(dataset)), training_set_idxs)
+    training_set = _loader_factory(
+        Subset(dataset, training_set_idxs),
         shuffle=False,
-        batch_size=2048,
+        batch_size=batch_size,
         num_workers=len(os.sched_getaffinity(0)),
     )
-    validation_set = DataLoader(
-        Subset(data, validation_set_idxs),
+    validation_set = _loader_factory(
+        Subset(dataset, validation_set_idxs),
         shuffle=False,
-        batch_size=2048,
+        batch_size=batch_size,
         num_workers=len(os.sched_getaffinity(0)),
     )
     log(INFO, 'training (validation) set is of size %d (%d)',
         len(training_set), len(validation_set))
 
-    mle = opts.pop('mle')
     state = opts.pop('state')
     if state:
         log(INFO, 'restoring state from %s', state)
@@ -158,33 +192,37 @@ def main():
         del opts['learning_rate']
     else:
         log(INFO, 'initializing network')
-        signal_frac = np.sum(data.metadata.signal) / len(data.metadata)
-        if mle:
-            from .network import Uninformative, Deterministic
-            prior_distribution = Uninformative
-            prior_kwargs = None
-            variational_distribution = Deterministic
-            variational_kwargs = None
+        signal_frac = np.sum(data.signal) / len(data)
+        if bagofwords:
+            network = MLP(
+                input_size=wordbags.shape[1],
+                output_size=2,
+                num_hidden=opts.pop('num_hidden'),
+                hidden_size=opts.pop('hidden_size'),
+                prior_distribution=prior_distribution,
+                prior_kwargs=prior_kwargs,
+                variational_distribution=variational_distribution,
+                variational_kwargs=variational_kwargs,
+                dataset_size=len(training_set_idxs),
+                class_weights=[0.5 / (1 - signal_frac), 0.5 / signal_frac],
+                learn_prior=opts.pop('learn_prior'),
+            )
         else:
-            from .network import Normal, NormalMixture
-            from .network import Uninformative, Deterministic
-            prior_distribution = NormalMixture
-            prior_kwargs = None
-            variational_distribution = Normal
-            variational_kwargs = None
-        network = MLP(
-            input_size=len(data[0]['input']),
-            output_size=2,
-            num_hidden=opts.pop('num_hidden'),
-            hidden_size=opts.pop('hidden_size'),
-            prior_distribution=prior_distribution,
-            prior_kwargs=prior_kwargs,
-            variational_distribution=variational_distribution,
-            variational_kwargs=variational_kwargs,
-            dataset_size=len(training_set_idxs),
-            class_weights=[0.5 / (1 - signal_frac), 0.5 / signal_frac],
-            learn_prior=opts.pop('learn_prior'),
-        ).to(get_device())
+            network = LSTM(
+                output_size=2,
+                input_size=len(Sequences._amino_acids),
+                hidden_size=25,
+                prior_distribution=prior_distribution,
+                prior_kwargs=prior_kwargs,
+                variational_distribution=variational_distribution,
+                variational_kwargs=variational_kwargs,
+                dataset_size=len(training_set_idxs),
+                class_weights=[0.5 / (1 - signal_frac), 0.5 / signal_frac],
+                learn_prior=opts.pop('learn_prior'),
+            )
+            del opts['num_hidden']
+            del opts['hidden_size']
+        network = network.to(get_device())
         optimizer = t.optim.Adam(
             network.parameters(), lr=opts.pop('learning_rate'))
 
@@ -194,7 +232,7 @@ def main():
             optimizer,
             training_set,
             validation_set,
-            update_samples=1 if mle else 10,
+            update_samples=update_samples,
             **opts,
         )
     except Exception as err:  # pylint: disable=broad-except

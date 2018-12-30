@@ -19,6 +19,7 @@ from .utils import (
     get_device,
     make_csv_writer,
     store_state,
+    to_device,
     with_interrupt_handler,
     zip_dicts,
 )
@@ -82,10 +83,7 @@ def train(
 
             data_tracker = tqdm(data_generator, dynamic_ncols=True)
             for x in data_tracker:
-                y = step_func({
-                    k: v.to(device) if isinstance(v, t.Tensor) else v
-                    for k, v in x.items()
-                })
+                y = step_func(to_device(x, device))
                 results.append(_collect_items(y))
                 data_tracker.set_description(
                     ' / '.join([_fmt(k, v) for k, v in results[-1].items()]))
