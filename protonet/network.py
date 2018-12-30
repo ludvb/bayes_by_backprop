@@ -136,16 +136,12 @@ class Linear(t.nn.Module):
         return x @ self.w + self.b
 
 
-class MLP(t.nn.Module):
+class Network(t.nn.Module):
     def __init__(
             self,
-            input_size: int,
             output_size: int,
-            num_hidden: int,
-            hidden_size: int,
             dataset_size: int,
             class_weights: Optional[List[float]] = None,
-            activation: Optional[t.nn.Module] = None,
             prior_distribution: type = Uninformative,
             prior_kwargs: Optional[dict] = None,
             variational_distribution: type = Deterministic,
@@ -154,9 +150,6 @@ class MLP(t.nn.Module):
     ):
         if class_weights is None:
             class_weights = np.repeat(1., output_size)
-
-        if activation is None:
-            activation = t.nn.LeakyReLU(inplace=True)
 
         if prior_kwargs is None:
             prior_kwargs = {}
@@ -177,42 +170,42 @@ class MLP(t.nn.Module):
             ' | '.join([f'{w:1.2f}' for w in self.class_weights]))
 
         log(DEBUG, 'prior distribution=%s(%s)', prior_distribution.__name__,
-            ','.join([f'{a}={b}' for a, b in prior_kwargs]))
+            ','.join([f'{a}={b}' for a, b in prior_kwargs.items()]))
         log(DEBUG, 'variational distribution=%s(%s)',
             variational_distribution.__name__, ','.join(
                 [f'{a}={b}' for a, b in variational_kwargs.items()]))
 
         self.layers = []
 
-        w_prior = prior_distribution((1, ), **variational_kwargs)
-        b_prior = prior_distribution((1, ), **variational_kwargs)
+        self.w_prior = prior_distribution((1, ), **prior_kwargs)
+        self.b_prior = prior_distribution((1, ), **prior_kwargs)
 
-        def _make_layer(in_size, out_size):
-            layer = Linear(
-                w_prior, b_prior,
-                variational_distribution((in_size, out_size), **prior_kwargs),
-                variational_distribution((out_size, ), **prior_kwargs),
-                **kwargs,
-            )
+        self._variational_distribution = variational_distribution
+        self._variational_kwargs = variational_kwargs
 
-            # if the variational distribution is deterministic, we need to
-            # break symmetry by applying some jitter to the weights
-            if variational_distribution == Deterministic:
-                init.kaiming_uniform_(layer.variational_w.x, a=np.sqrt(5))
+        self._linear_kwargs = kwargs
 
-            self.layers.append(layer)
-            return layer
-
-        self._forward = t.nn.Sequential(
-            _make_layer(input_size, hidden_size),
-            activation,
-            *reduce(op.add, [[
-                _make_layer(hidden_size, hidden_size),
-                activation,
-            ] for _ in range(num_hidden)]),
-            _make_layer(hidden_size, output_size),
-            t.nn.LogSoftmax(dim=1),
+    def _make_layer(self, in_size, out_size):
+        layer = Linear(
+            self.w_prior, self.b_prior,
+            self._variational_distribution(
+                (in_size, out_size), **self._variational_kwargs),
+            self._variational_distribution(
+                (out_size, ), **self._variational_kwargs),
+            **self._linear_kwargs,
         )
+
+        # if the variational distribution is deterministic, we need to
+        # break symmetry by applying some jitter to the weights
+        if self._variational_distribution is Deterministic:
+            init.kaiming_uniform_(layer.variational_w.x, a=np.sqrt(5))
+
+        self.layers.append(layer)
+        return layer
+
+    @abstractmethod
+    def _forward(self, x):
+        pass
 
     def forward(self, x):
         inputs = x['input']
@@ -234,7 +227,7 @@ class MLP(t.nn.Module):
         )
 
         return OrderedDict(
-            prediction=y,
+            prediction=t.exp(y),
             loss=likelihood_loss + prior_loss,
             acc=t.mean((t.argmax(y, dim=1) == labels).float()),
             wt_acc=t.sum(
@@ -245,3 +238,84 @@ class MLP(t.nn.Module):
             px=-likelihood_loss,
             dqp=prior_loss,
         )
+
+
+class MLP(Network):
+    def __init__(
+            self,
+            input_size: int,
+            output_size: int,
+            num_hidden: int,
+            hidden_size: int,
+            activation: Optional[t.nn.Module] = None,
+            **kwargs,
+    ):
+        super().__init__(output_size=output_size, **kwargs)
+
+        if activation is None:
+            activation = t.nn.LeakyReLU(inplace=True)
+
+        self.__forward = t.nn.Sequential(
+            self._make_layer(input_size, hidden_size),
+            activation,
+            *reduce(op.add, [[
+                self._make_layer(hidden_size, hidden_size),
+                activation,
+            ] for _ in range(num_hidden)]),
+            self._make_layer(hidden_size, output_size),
+            t.nn.LogSoftmax(dim=1),
+        )
+
+    def _forward(self, x):
+        return self.__forward(x)
+
+
+class LSTM(Network):
+    def __init__(
+            self,
+            output_size: int,
+            input_size: int,
+            hidden_size: int,
+            **kwargs,
+    ):
+        super().__init__(output_size=output_size, **kwargs)
+
+        self._hidden_size = hidden_size
+
+        self.forget_gate = self._make_layer(
+            input_size + hidden_size, hidden_size)
+        self.input_gate = self._make_layer(
+            input_size + hidden_size, hidden_size)
+        self.input_candidates = self._make_layer(
+            input_size + hidden_size, hidden_size)
+        self.output_gate = self._make_layer(
+            input_size + hidden_size, hidden_size)
+
+        self.classifier = self._make_layer(hidden_size, output_size)
+
+        self.sigmoid = t.nn.Sigmoid()
+        self.tanh = t.nn.Tanh()
+        self.lsm = t.nn.LogSoftmax(dim=1)
+
+    def _forward(self, xs):
+        T = xs['data'].shape[0]
+        m = xs['data'].shape[1]
+
+        c = t.zeros((m, self._hidden_size)).to(xs['data'])
+        hs = t.zeros((T + 1, m, self._hidden_size)).to(xs['data'])
+
+        for time, x in enumerate(xs['data']):
+            y = t.cat([x, hs[time]], dim=1)
+
+            forget_mask = self.sigmoid(self.forget_gate(y))
+            input_mask = self.sigmoid(self.input_gate(y))
+            output_mask = self.sigmoid(self.output_gate(y))
+
+            input_candidates = self.tanh(self.input_candidates(y))
+
+            c = c * forget_mask + input_mask * input_candidates
+            hs[time + 1] = output_mask * self.tanh(c)
+
+        h_final = hs[xs['length'], range(m)]
+
+        return self.lsm(self.classifier(h_final))

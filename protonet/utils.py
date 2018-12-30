@@ -10,6 +10,16 @@ def get_device() -> t.device:
     return t.device('cuda' if t.cuda.is_available() else 'cpu')
 
 
+def to_device(obj, device):
+    if isinstance(obj, t.Tensor):
+        obj.data = obj.to(device)
+    elif isinstance(obj, list) or isinstance(obj, tuple):
+        obj = type(obj)([to_device(x, device) for x in obj])
+    elif isinstance(obj, dict):
+        obj = {k: to_device(v, device) for k, v in obj.items()}
+    return obj
+
+
 def with_interrupt_handler(handler):
     from functools import wraps
     import signal
