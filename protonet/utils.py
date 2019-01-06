@@ -1,9 +1,62 @@
 from collections import OrderedDict
 
-from typing import List, Optional
+from typing import Any, Callable, List, Optional, Tuple
+
+import numpy as np
 
 import torch as t
 from torch.optim.optimizer import Optimizer
+
+from tqdm import tqdm
+
+from .logging import INFO, log
+
+
+class Interrupt(Exception):
+    pass
+
+
+def collect_items(d):
+    d_ = {}
+    for k, v in d.items():
+        try:
+            d_[k] = v.item()
+        except (ValueError, AttributeError):
+            pass
+    return d_
+
+
+def step_function(device) -> Callable[
+        [t.device],
+        Callable[[Any], Tuple[List[float], List[float]]],
+]:
+    def _decorator(step_func):
+        def _wrapper(data_generator):
+            results: List[dict] = []
+
+            def _fmt(k, v):
+                return (
+                    f'{k}: {v:.5f}'
+                    if abs(v) < 10 or abs(v) < 0.10 else
+                    f'{k}: {v:.2e}'
+                )
+
+            data_tracker = tqdm(data_generator, dynamic_ncols=True)
+            for x in data_tracker:
+                y = step_func(to_device(x, device))
+                results.append(collect_items(y))
+                data_tracker.set_description(
+                    ' / '.join([_fmt(k, v) for k, v in results[-1].items()]))
+
+            results_ = zip_dicts(results)
+            log(INFO, 'means: %s', ', '.join([
+                _fmt(k, m)
+                for k, v in results_.items() for m in (np.mean(v),)
+            ]))
+
+            return results_
+        return _wrapper
+    return _decorator
 
 
 def get_device() -> t.device:
