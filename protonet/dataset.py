@@ -52,7 +52,7 @@ class Sequences(Dataset):
         return dict(
             input=t.cat([
                 _encode(c)[None, ...]
-                for c in self.data['sequence'].iloc[idx]
+                for c in self.data['sequence'].iloc[idx][:200]
             ]),
             label=t.as_tensor(self.data.signal[idx], dtype=t.long),
         )
