@@ -130,9 +130,11 @@ class Linear(t.nn.Module):
                 for p in d.parameters():
                     p.requires_grad = False
 
-    def forward(self, x):
+    def resample(self):
         self.w = self.variational_w.sample()
         self.b = self.variational_b.sample()
+
+    def forward(self, x):
         return x @ self.w + self.b
 
 
@@ -203,15 +205,25 @@ class Network(t.nn.Module):
         self.layers.append(layer)
         return layer
 
+    def resample(self):
+        for l in self.layers:
+            l.resample()
+        return self
+
     @abstractmethod
-    def _forward(self, x):
+    def _forward(self, x, **kwargs):
         pass
 
-    def forward(self, x):
+    def forward(self, x, resample=True, **kwargs):
+        if resample:
+            self.resample()
+        return self._forward(x, **kwargs)
+
+    def forward_with_loss(self, x, *args, **kwargs):
         inputs = x['input']
         labels = x['label']
 
-        y = self._forward(inputs)
+        y = self._forward(inputs, *args, **kwargs)
 
         likelihood_loss = t.nn.functional.nll_loss(
             y, labels, self.class_weights, reduction='sum')
