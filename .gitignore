@@ -1,7 +1,7 @@
 data.tsv*
 prots_all.fasta.gz
 signal_prots.fasta.gz
-protonet/version.py
+protonet/__version__.py
 **__pycache__**
 **.mypy_cache**
 **.egg-info**
