@@ -177,7 +177,7 @@ class Network(t.nn.Module):
             variational_distribution.__name__, ','.join(
                 [f'{a}={b}' for a, b in variational_kwargs.items()]))
 
-        self.layers = []
+        self.layers: List[Linear] = []
 
         self.w_prior = prior_distribution((1, ), **prior_kwargs)
         self.b_prior = prior_distribution((1, ), **prior_kwargs)
