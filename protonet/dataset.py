@@ -24,6 +24,7 @@ class WordBags(Dataset):
 
     def __getitem__(self, idx: int):
         return dict(
+            entry=self.metadata.index[idx],
             input=t.as_tensor(self.data.iloc[idx].values).float(),
             label=t.as_tensor(self.metadata.signal[idx]).long(),
         )
@@ -50,6 +51,7 @@ class Sequences(Dataset):
             except KeyError:
                 return t.zeros((self._onehot.shape[1],), dtype=t.float)
         return dict(
+            entry=self.data.index[idx],
             input=t.cat([
                 _encode(c)[None, ...]
                 for c in self.data['sequence'].iloc[idx][:200]
@@ -73,6 +75,7 @@ def make_sequence_loader(dataset: Sequences, *args, **kwargs):
                 length=length,
             ),
             label=label,
+            entry=[x['entry'] for x in xs],
         )
 
     return DataLoader(dataset, *args, collate_fn=_collate_fn, **kwargs)
