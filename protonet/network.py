@@ -309,7 +309,7 @@ class LSTM(Network):
         self.tanh = t.nn.Tanh()
         self.lsm = t.nn.LogSoftmax(dim=1)
 
-    def _forward(self, xs):
+    def _forward(self, xs, track_outputs):
         T = xs['data'].shape[0]
         m = xs['data'].shape[1]
 
@@ -328,6 +328,15 @@ class LSTM(Network):
             c = c * forget_mask + input_mask * input_candidates
             hs[time + 1] = output_mask * self.tanh(c)
 
-        h_final = hs[xs['length'], range(m)]
+        if track_outputs:
+            return [y[:l] for y, l in zip(
+                self.lsm(self.classifier(
+                    hs.reshape(-1, hs.shape[-1])
+                ))
+                .reshape(T + 1, m, -1)
+                .transpose(0, 1),
+                xs['length'],
+            )]
 
+        h_final = hs[xs['length'], range(m)]
         return self.lsm(self.classifier(h_final))
