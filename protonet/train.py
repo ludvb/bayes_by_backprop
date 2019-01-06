@@ -5,7 +5,7 @@ import itertools as it
 import os
 import os.path as osp
 
-from typing import Any, Callable, List, Optional, Tuple
+from typing import List, Optional
 
 import numpy as np
 
@@ -13,22 +13,18 @@ import torch as t
 from torch.optim.optimizer import Optimizer
 from torch.utils.data import DataLoader
 
-from tqdm import tqdm
-
 from .utils import (
+    Interrupt,
+    collect_items,
     get_device,
     make_csv_writer,
+    step_function,
     store_state,
-    to_device,
     with_interrupt_handler,
     zip_dicts,
 )
 
 from .logging import INFO, log
-
-
-class Interrupt(Exception):
-    pass
 
 
 def train(
@@ -59,58 +55,22 @@ def train(
             prefix=name,
         )
 
-    def _collect_items(d):
-        d_ = {}
-        for k, v in d.items():
-            try:
-                d_[k] = v.item()
-            except (ValueError, AttributeError):
-                pass
-        return d_
-
     device = get_device()
 
-    def _step_function(step_func) -> Callable[[Any], None]:
-        def _wrapper(data_generator) -> Tuple[List[float], List[float]]:
-            results: List[dict] = []
-
-            def _fmt(k, v):
-                return (
-                    f'{k}: {v:.5f}'
-                    if abs(v) < 10 or abs(v) < 0.10 else
-                    f'{k}: {v:.2e}'
-                )
-
-            data_tracker = tqdm(data_generator, dynamic_ncols=True)
-            for x in data_tracker:
-                y = step_func(to_device(x, device))
-                results.append(_collect_items(y))
-                data_tracker.set_description(
-                    ' / '.join([_fmt(k, v) for k, v in results[-1].items()]))
-
-            results_ = zip_dicts(results)
-            log(INFO, 'means: %s', ', '.join([
-                _fmt(k, m)
-                for k, v in results_.items() for m in (np.mean(v),)
-            ]))
-
-            return results_
-        return _wrapper
-
-    @_step_function
+    @step_function(device)
     def _train_step(x):
         optimizer.zero_grad()
         results: List[dict] = []
         for _ in range(update_samples):
-            y = network(x)
-            results.append(_collect_items(y))
+            y = network.forward_with_loss(x)
+            results.append(collect_items(y))
             y['loss'].backward()
         optimizer.step()
         return {k: np.mean(v) for k, v in zip_dicts(results).items()}
 
-    @_step_function
+    @step_function(device)
     def _valid_step(x):
-        return network(x)
+        return network.forward_with_loss(x)
 
     write_data = make_csv_writer(
         osp.join(output_prefix, 'training_data.csv'),
