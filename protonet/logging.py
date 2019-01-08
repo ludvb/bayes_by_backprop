@@ -26,7 +26,7 @@ class Formatter(logging.Formatter):
             '\033[91m' if self.fancy and record.levelno >= ERROR                              else None,
             '\033[93m' if self.fancy and record.levelno >= WARNING and record.levelno < ERROR else None,
             record.levelname.lower(),
-            '\033[0m' if sys.stderr.isatty() else None,
+            '\033[0m' if self.fancy else None,
             (
                 f' ({record.filename}:{record.lineno})'
                 if record.levelno != INFO else None
