@@ -72,7 +72,7 @@ def _train(
         wordbags = None
         dataset = Sequences(data=data)
         _loader_factory = make_sequence_loader
-        batch_size = 16
+        batch_size = 256
 
     log(INFO, 'batch size is set to %d', batch_size)
 
@@ -176,7 +176,7 @@ def _apply(
     else:
         dataset = Sequences(data=data)
         _loader_factory = make_sequence_loader
-        batch_size = 16
+        batch_size = 256
 
     data_loader = _loader_factory(
         dataset,
