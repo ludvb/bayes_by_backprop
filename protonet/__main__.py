@@ -285,27 +285,38 @@ def main():
     else:
         set_level(INFO)
 
-    log(INFO, 'running version %s with args %s', __version__,
-        ', '.join([f'{k}={v}' for k, v in opts.items()]))
-
-    log(INFO, 'using device: "%s"', str(get_device().type))
-
     try:
-        run(**opts)
-    except Exception as err:  # pylint: disable=broad-except
-        from traceback import format_exc
-        from .logging import LOGGER
-        trace = err.__traceback__
-        while trace.tb_next is not None:
-            trace = trace.tb_next
-        frame = trace.tb_frame
-        LOGGER.findCaller = (
-            lambda self, stack_info=None, f=frame:
-            (f.f_code.co_filename, f.f_lineno, f.f_code.co_name, None)
-        )
-        log(ERROR, str(err))
-        log(DEBUG, format_exc().strip())
-        sys.exit(1)
+        os.makedirs(opts['output_prefix'])
+    except OSError as e:
+        raise RuntimeError(f'failed to create output directory ({e})')
+
+    with open(osp.join(opts['output_prefix'], 'log'), 'w') as log_file:
+        from logging import StreamHandler
+        from .logging import Formatter, LOGGER
+        log_handler = StreamHandler(log_file)
+        log_handler.setFormatter(Formatter(fancy_formatting=False))
+        LOGGER.addHandler(log_handler)
+
+        log(INFO, 'running version %s with args %s', __version__,
+            ', '.join([f'{k}={v}' for k, v in opts.items()]))
+        log(INFO, 'using device: "%s"', str(get_device().type))
+
+        try:
+            run(**opts)
+        except Exception as err:  # pylint: disable=broad-except
+            from traceback import format_exc
+            from .logging import LOGGER
+            trace = err.__traceback__
+            while trace.tb_next is not None:
+                trace = trace.tb_next
+            frame = trace.tb_frame
+            LOGGER.findCaller = (
+                lambda self, stack_info=None, f=frame:
+                (f.f_code.co_filename, f.f_lineno, f.f_code.co_name, None)
+            )
+            log(ERROR, str(err))
+            log(DEBUG, format_exc().strip())
+            sys.exit(1)
 
 
 if __name__ == '__main__':
