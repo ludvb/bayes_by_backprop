@@ -1,5 +1,10 @@
 from collections import OrderedDict
 
+import itertools as it
+
+import os
+import os.path as osp
+
 from typing import Any, Callable, List, Optional, Tuple
 
 import numpy as np
@@ -102,7 +107,8 @@ def store_state(
     if not prefix:
         prefix = 'checkpoint'
 
-    filename = osp.join(path, f'{prefix}.pkl')
+    filename = first_non_existant(
+        osp.join(path, f'{prefix}.pkl'))
     log(INFO, 'saving state to %s...', filename)
 
     t.save(
@@ -161,3 +167,28 @@ def zip_dicts(ds: List[dict]) -> dict:
             except AttributeError:
                 raise ValueError('dict keys are inconsistent')
     return d
+
+
+def first_non_existant(path):
+    if not osp.exists(path):
+        return path
+
+    dirname = osp.dirname(path)
+    basename = osp.basename(path)
+    try:
+        [base, ext] = basename.rsplit('.', 1)
+    except ValueError:
+        base = basename
+        ext = None
+
+    return next(it.dropwhile(
+        osp.exists,
+        map(
+            lambda i: osp.join(
+                dirname,
+                f'{base}.{i}'
+                + (f'.{ext}' if ext else ''),
+            ),
+            it.count(1),
+        ),
+    ))

@@ -22,10 +22,10 @@ from torch.utils.data.dataset import Subset
 from . import __version__
 from .apply import apply
 from .dataset import WordBags, Sequences, make_sequence_loader
-from .logging import DEBUG, ERROR, INFO, log, set_level
+from .logging import DEBUG, ERROR, INFO, WARNING, log, set_level
 from .network import LSTM, MLP
 from .train import train
-from .utils import get_device, restore_state
+from .utils import first_non_existant, get_device, restore_state
 
 
 def _train(
@@ -288,12 +288,18 @@ def main():
     else:
         set_level(INFO)
 
-    try:
-        os.makedirs(opts['output_prefix'])
-    except OSError as e:
-        raise RuntimeError(f'failed to create output directory ({e})')
+    if osp.exists(opts['output_prefix']):
+        log(WARNING, 'output directory %s exists', opts['output_prefix'])
+    else:
+        try:
+            os.makedirs(opts['output_prefix'], exist_ok=True)
+        except OSError as e:
+            raise RuntimeError(f'failed to create output directory ({e})')
 
-    with open(osp.join(opts['output_prefix'], 'log'), 'w') as log_file:
+    with open(
+            first_non_existant(osp.join(opts['output_prefix'], 'log')),
+            'w',
+    ) as log_file:
         from logging import StreamHandler
         from .logging import Formatter, LOGGER
         log_handler = StreamHandler(log_file)

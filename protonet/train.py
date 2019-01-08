@@ -16,6 +16,7 @@ from torch.utils.data import DataLoader
 from .utils import (
     Interrupt,
     collect_items,
+    first_non_existant,
     get_device,
     make_csv_writer,
     step_function,
@@ -38,8 +39,7 @@ def train(
         start_epoch: int = 1,
 ):
     try:
-        os.makedirs(output_prefix)
-        os.makedirs(osp.join(output_prefix, 'checkpoints'))
+        os.makedirs(osp.join(output_prefix, 'checkpoints'), exist_ok=True)
     except OSError as e:
         raise RuntimeError(f'failed to create output directory ({e})')
 
@@ -75,7 +75,7 @@ def train(
         return network.forward_with_loss(x)
 
     write_data = make_csv_writer(
-        osp.join(output_prefix, 'training_data.csv'),
+        first_non_existant(osp.join(output_prefix, 'training_data.csv')),
         ['epoch', 'iteration', 'validation', 'type', 'value'],
     )
 

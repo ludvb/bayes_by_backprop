@@ -10,6 +10,7 @@ from torch.utils.data import DataLoader
 
 from .utils import (
     Interrupt,
+    first_non_existant,
     get_device,
     make_csv_writer,
     step_function,
@@ -32,7 +33,7 @@ def apply(
         log(WARNING, 'can\'t track output of MLP, ignoring.')
 
     try:
-        os.makedirs(output_prefix)
+        os.makedirs(output_prefix, exist_ok=True)
     except OSError as e:
         raise RuntimeError(f'failed to create output directory ({e})')
 
@@ -42,7 +43,7 @@ def apply(
             raise Interrupt()
 
     write_data = make_csv_writer(
-        osp.join(output_prefix, 'data.csv'),
+        first_non_existant(osp.join(output_prefix, 'data.csv')),
         ['entry', 'position', 'sample', 'prediction0', 'prediction1'],
     )
 
