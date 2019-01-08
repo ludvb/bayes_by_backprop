@@ -35,6 +35,7 @@ def train(
         output_prefix: str,
         nepochs: Optional[int] = None,
         update_samples: int = 1,
+        start_epoch: int = 1,
 ):
     try:
         os.makedirs(output_prefix)
@@ -47,10 +48,11 @@ def train(
         if current_process().name == 'MainProcess':
             raise Interrupt()
 
-    def checkpoint(name=None):
+    def checkpoint(epoch, name=None):
         store_state(
             network=network,
             optimizer=optimizer,
+            epoch=epoch,
             path=osp.join(output_prefix, 'checkpoints'),
             prefix=name,
         )
@@ -77,13 +79,17 @@ def train(
         ['epoch', 'iteration', 'validation', 'type', 'value'],
     )
 
+    epoch: int
+
     @with_interrupt_handler(_interrupt_handler)
     def _run_training_loop():
+        nonlocal epoch
+
         best_loss: float = float('inf')
 
         for epoch in it.takewhile(
                 lambda x: nepochs is None or x <= nepochs,
-                it.count(1),
+                it.count(start_epoch),
         ):
             log(INFO, 'starting epoch %d of %s...', epoch,
                 str(nepochs) if nepochs else 'inf')
@@ -101,7 +107,7 @@ def train(
             avg_loss = np.mean(valid_data['loss'])
             if best_loss > avg_loss:
                 best_loss = avg_loss
-                checkpoint(f'epoch-{epoch:03d}')
+                checkpoint(epoch, f'epoch-{epoch:03d}')
 
             log(INFO, 'writing training data')
             for validation, data in ((0, train_data), (1, valid_data)):
@@ -121,4 +127,4 @@ def train(
     except Interrupt:
         log(INFO, 'interrupted, stopping')
 
-    checkpoint('final')
+    checkpoint(epoch, 'final')

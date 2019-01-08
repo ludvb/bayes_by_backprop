@@ -92,6 +92,7 @@ def with_interrupt_handler(handler):
 def store_state(
         network: t.nn.Module,
         optimizer: Optimizer,
+        epoch: int,
         path: str,
         prefix: Optional[str] = None,
 ) -> None:
@@ -108,6 +109,7 @@ def store_state(
         dict(
             network=network,
             optimizer=optimizer,
+            epoch=epoch,
         ),
         filename,
     )

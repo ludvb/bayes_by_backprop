@@ -103,6 +103,7 @@ def _train(
         state = restore_state(state)
         network = state['network']
         optimizer = state['optimizer']
+        start_epoch = state['epoch']
     else:
         log(INFO, 'initializing network')
         signal_frac = np.sum(data.signal) / len(data)
@@ -136,6 +137,7 @@ def _train(
         network = network.to(get_device())
         optimizer = t.optim.Adam(
             network.parameters(), lr=learning_rate)
+        start_epoch = 1
 
     train(
         network,
@@ -143,6 +145,7 @@ def _train(
         training_set,
         validation_set,
         update_samples=update_samples,
+        start_epoch=start_epoch,
         **kwargs,
     )
 
