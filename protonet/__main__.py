@@ -52,7 +52,7 @@ def _train(
         prior_kwargs = None
         variational_distribution = Normal
         variational_kwargs = None
-        update_samples = 10
+        update_samples = 1
 
     log(DEBUG, 'reading data...')
     data = pd.read_csv(data_file, sep='\t', header=0, index_col=0)
