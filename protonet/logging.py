@@ -4,7 +4,7 @@ from logging import DEBUG, ERROR, INFO, WARNING
 import sys
 
 
-LOGGER = logging.getLogger()
+LOGGER = logging.getLogger(__name__)
 
 log = LOGGER.log
 
