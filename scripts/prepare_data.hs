@@ -83,7 +83,6 @@ main = do
   let signalEntries = Set.fromList $ getEntry . fst <$> (parseFasta . unpack) signalContents
   let allSeqs = (parseFasta . unpack) allContents
 
-
   let (ngrams, ids) = foldr (\(x, y) (a, b) -> (x : a, y : b)) ([], []) (toList ngram2id)
     in putStr . compress . pack . foldr1 (++) $
       (intercalate "\t" ([ "entry" , "signal" , "sequence" ] ++ ngrams)
