@@ -22,7 +22,14 @@ try:
         .replace('-', '.')
     )
 except sp.CalledProcessError:
-    VERSION = '0.0.0+not.described'
+    try:
+        VERSION = sp.check_output(
+            ['git', 'describe', '--dirty', '--always']).decode('utf8').strip()
+        VERSION = '0.0.0+untagged.{}'.format(VERSION.replace('-', '.'))
+    except sp.CalledProcessError:
+        VERSION = '0.0.0+git.error'
+except FileNotFoundError:
+    VERSION = '0.0.0+no.git'
 
 with open(
     osp.join(
