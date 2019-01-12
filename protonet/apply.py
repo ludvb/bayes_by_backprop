@@ -73,7 +73,7 @@ def apply(
                         ('prediction0', p1),
                         ('prediction1', p2),
                     )))
-                _predictions = t.cat([y[-1][None, ...] for y in ys])
+                _predictions = t.stack([y[-1] for y in ys])
             else:
                 for p1, p2 in t.exp(ys):
                     write_data(OrderedDict((
@@ -87,9 +87,7 @@ def apply(
             predictions.append(_predictions)
         return dict(
             accuracy=t.mean((
-                t.argmax(t.mean(t.cat([
-                    p[None, ...] for p in predictions
-                ], dim=0), dim=0,), dim=1)
+                t.argmax(t.mean(t.stack(predictions, dim=0), dim=0), dim=1)
                 ==
                 x['label']
             ).float()),

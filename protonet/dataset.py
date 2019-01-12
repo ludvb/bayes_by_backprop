@@ -60,10 +60,10 @@ class Sequences(Dataset):
                 return t.zeros((self._onehot.shape[1],), dtype=t.float)
         return dict(
             entry=self.data.index[idx],
-            input=t.cat([
-                _encode(c)[None, ...]
-                for c in self._truncate(self.data['sequence'].iloc[idx])
-            ]),
+            input=t.stack(tuple(map(
+                _encode,
+                self._truncate(self.data['sequence'].iloc[idx]),
+            ))),
             label=t.as_tensor(self.data.signal[idx], dtype=t.long),
         )
 
@@ -75,9 +75,9 @@ def make_sequence_loader(dataset: Sequences, *args, **kwargs):
         length = t.as_tensor([x.shape[0] for x in data], dtype=t.long)
         return dict(
             input=dict(
-                data=t.cat([
+                data=t.stack([
                     t.nn.functional.pad(
-                        x, (0, 0, 0, max(length) - x.shape[0]))[None, ...]
+                        x, (0, 0, 0, max(length) - x.shape[0]))
                     for x in data
                 ]).transpose(0, 1),
                 length=length,

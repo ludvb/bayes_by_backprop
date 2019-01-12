@@ -78,7 +78,7 @@ class NormalMixture(Distribution):
             np.log(0.5)
             +
             t.logsumexp(
-                t.cat((self.d1.p(x)[None, ...], self.d2.p(x)[None, ...])),
+                t.stack((self.d1.p(x), self.d2.p(x))),
                 dim=0,
             )
         )
