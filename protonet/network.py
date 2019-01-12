@@ -210,21 +210,7 @@ class Network(t.nn.Module):
             l.resample()
         return self
 
-    @abstractmethod
-    def _forward(self, x, **kwargs):
-        pass
-
-    def forward(self, x, resample=True, **kwargs):
-        if resample:
-            self.resample()
-        return self._forward(x, **kwargs)
-
-    def forward_with_loss(self, x, *args, **kwargs):
-        inputs = x['input']
-        labels = x['label']
-
-        y = self.forward(inputs, *args, **kwargs)
-
+    def compute_loss(self, y, labels):
         likelihood_loss = t.nn.functional.nll_loss(
             y, labels, self.class_weights, reduction='sum')
         prior_loss = (
@@ -237,7 +223,6 @@ class Network(t.nn.Module):
                 for l in self.layers
             ])
         )
-
         return OrderedDict(
             prediction=t.exp(y),
             loss=likelihood_loss + prior_loss,
@@ -250,6 +235,19 @@ class Network(t.nn.Module):
             px=-likelihood_loss,
             dqp=prior_loss,
         )
+
+    @abstractmethod
+    def _forward(self, x, **kwargs):
+        pass
+
+    def forward(self, x, resample=True, **kwargs):
+        if resample:
+            self.resample()
+        return self._forward(x, **kwargs)
+
+    def forward_with_loss(self, x, *args, **kwargs):
+        y = self.forward(x['input'], *args, **kwargs)
+        return self.compute_loss(y, x['label'])
 
 
 class MLP(Network):
@@ -288,9 +286,12 @@ class LSTM(Network):
             output_size: int,
             input_size: int,
             hidden_size: int,
+            classify_prefixes: bool = False,
             **kwargs,
     ):
         super().__init__(output_size=output_size, **kwargs)
+
+        self.classify_prefixes = classify_prefixes
 
         self._hidden_size = hidden_size
 
@@ -308,6 +309,27 @@ class LSTM(Network):
         self.sigmoid = t.nn.Sigmoid()
         self.tanh = t.nn.Tanh()
         self.lsm = t.nn.LogSoftmax(dim=1)
+
+    def forward_with_loss(self, x, *args, **kwargs):
+        include_prefixes = self.classify_prefixes and self.training
+        labels = (
+            t.cat([
+                x.repeat(n)
+                for x, n in zip(x['label'], x['input']['length'])
+            ])
+            if include_prefixes else
+            x['label']
+        )
+        y = self.forward(
+            x['input'],
+            track_outputs=include_prefixes,
+            *args,
+            **kwargs,
+        )
+        return self.compute_loss(
+            t.cat(y) if include_prefixes else y,
+            labels,
+        )
 
     def _forward(self, xs, track_outputs=False):
         T = xs['data'].shape[0]

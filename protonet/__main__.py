@@ -38,6 +38,7 @@ def _train(
         num_hidden,
         hidden_size,
         truncate,
+        classify_prefixes,
         learn_prior,
         **kwargs,
 ):
@@ -128,6 +129,7 @@ def _train(
                 output_size=2,
                 input_size=len(Sequences._amino_acids),
                 hidden_size=25,
+                classify_prefixes=classify_prefixes,
                 prior_distribution=prior_distribution,
                 prior_kwargs=prior_kwargs,
                 variational_distribution=variational_distribution,
@@ -235,6 +237,12 @@ def main():
         '--truncate',
         type=int,
         help='truncate sequences to given length (LSTM only)',
+    )
+    train_parser.add_argument(
+        '--classify-prefixes',
+        action='store_true',
+        help='all prefixes of the sequence will also be classified and '
+             'contribute to the loss (LSTM only)',
     )
     train_parser.add_argument(
         '--mle',
