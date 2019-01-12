@@ -12,6 +12,7 @@ import sys
 from tempfile import gettempdir
 
 import numpy as np
+import numpy.random as nr
 
 import pandas as pd
 
@@ -198,6 +199,7 @@ def main():
     )
     args.add_argument('-v', '--version', action='version', version=__version__)
     args.add_argument('--verbose', action='store_true')
+    args.add_argument('--seed', type=int, help='RNG seed')
 
     sp = args.add_subparsers()
     train_parser = sp.add_parser('train')
@@ -309,6 +311,15 @@ def main():
         log(INFO, 'running version %s with args %s', __version__,
             ', '.join([f'{k}={v}' for k, v in opts.items()]))
         log(INFO, 'using device: "%s"', str(get_device().type))
+
+        seed = opts.pop('seed')
+        if seed:
+            nr.seed(seed)
+            t.manual_seed(nr.randint(np.iinfo(np.int32).max + 1))
+            t.backends.cudnn.deterministic = True
+            t.backends.cudnn.benchmark = False
+            log(INFO, 'numpy seed set %d, torch seed set to %d',
+                seed, t.initial_seed())
 
         try:
             run(**opts)
