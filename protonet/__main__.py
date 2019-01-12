@@ -269,7 +269,7 @@ def main():
     train_parser.add_argument(
         '--learning-rate',
         type=float,
-        default=5e-3,
+        default=1e-4,
     )
     train_parser.add_argument(
         '--output-prefix',
