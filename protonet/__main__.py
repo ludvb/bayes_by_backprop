@@ -40,6 +40,7 @@ def _train(
         truncate,
         classify_prefixes,
         learn_prior,
+        batch_size,
         **kwargs,
 ):
     if mle:
@@ -70,12 +71,14 @@ def _train(
         )
         dataset = WordBags(wordbags, data.drop('sequence', axis=1))
         _loader_factory = DataLoader
-        batch_size = 2048
+        if batch_size is None:
+            batch_size = 2048
     else:
         wordbags = None
         dataset = Sequences(data=data, truncate=truncate)
         _loader_factory = make_sequence_loader
-        batch_size = 256
+        if batch_size is None:
+            batch_size = 256
 
     log(INFO, 'batch size is set to %d', batch_size)
 
@@ -158,6 +161,7 @@ def _apply(
         data_file,
         wordbags_file,
         state,
+        batch_size,
         **kwargs,
 ):
     log(INFO, 'restoring state from %s', state)
@@ -179,11 +183,13 @@ def _apply(
         )
         dataset = WordBags(wordbags, data.drop('sequence', axis=1))
         _loader_factory = DataLoader
-        batch_size = 2048
+        if batch_size is None:
+            batch_size = 2048
     else:
         dataset = Sequences(data=data)
         _loader_factory = make_sequence_loader
-        batch_size = 256
+        if batch_size is None:
+            batch_size = 256
 
     data_loader = _loader_factory(
         dataset,
@@ -203,6 +209,7 @@ def main():
     args.add_argument('-v', '--version', action='version', version=__version__)
     args.add_argument('--verbose', action='store_true')
     args.add_argument('--seed', type=int, help='RNG seed')
+    args.add_argument('--batch-size', type=int)
 
     sp = args.add_subparsers()
     train_parser = sp.add_parser('train')
