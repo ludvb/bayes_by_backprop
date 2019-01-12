@@ -1,3 +1,5 @@
+from typing import Optional
+
 import numpy as np
 
 import pandas as pd
@@ -38,8 +40,14 @@ class Sequences(Dataset):
     def __init__(
             self,
             data: pd.DataFrame,
+            truncate: Optional[int] = None,
     ):
         self.data = data
+        self._truncate = (
+            (lambda x: x[:truncate])
+            if truncate else
+            (lambda x: x)
+        )
 
     def __len__(self):
         return len(self.data)
@@ -54,7 +62,7 @@ class Sequences(Dataset):
             entry=self.data.index[idx],
             input=t.cat([
                 _encode(c)[None, ...]
-                for c in self.data['sequence'].iloc[idx][:200]
+                for c in self._truncate(self.data['sequence'].iloc[idx])
             ]),
             label=t.as_tensor(self.data.signal[idx], dtype=t.long),
         )

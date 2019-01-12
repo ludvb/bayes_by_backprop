@@ -37,6 +37,7 @@ def _train(
         state,
         num_hidden,
         hidden_size,
+        truncate,
         learn_prior,
         **kwargs,
 ):
@@ -71,7 +72,7 @@ def _train(
         batch_size = 2048
     else:
         wordbags = None
-        dataset = Sequences(data=data)
+        dataset = Sequences(data=data, truncate=truncate)
         _loader_factory = make_sequence_loader
         batch_size = 256
 
@@ -229,6 +230,11 @@ def main():
         '--hidden-size',
         type=int,
         default=100,
+    )
+    train_parser.add_argument(
+        '--truncate',
+        type=int,
+        help='truncate sequences to given length (LSTM only)',
     )
     train_parser.add_argument(
         '--mle',
