@@ -337,6 +337,7 @@ def main():
 
         log(INFO, 'running version %s with args %s', __version__,
             ', '.join([f'{k}={v}' for k, v in opts.items()]))
+        log(DEBUG, 'invocation: %s', ' '.join(sys.argv))
 
         if __diff__:
             log(WARNING, 'package is dirty')
