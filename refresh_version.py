@@ -12,9 +12,16 @@ import os.path as osp
 import subprocess as sp
 
 
+def _output_from(cmd):
+    return sp.check_output(cmd.split(' '))
+
+
+def _txt_from(cmd):
+    return _output_from(cmd).decode().strip()
+
+
 try:
-    VERSION = sp.check_output(
-        ['git', 'describe', '--dirty']).decode('utf8').strip()
+    VERSION = _txt_from('git describe --dirty')
     # Modify according to PEP440
     VERSION = (
         re.compile(r'([^\-]+?)-([^\-]+?)-(.+?)')
@@ -23,13 +30,17 @@ try:
     )
 except sp.CalledProcessError:
     try:
-        VERSION = sp.check_output(
-            ['git', 'describe', '--dirty', '--always']).decode('utf8').strip()
+        VERSION = _txt_from('git describe --dirty --always')
         VERSION = '0.0.0+untagged.{}'.format(VERSION.replace('-', '.'))
     except sp.CalledProcessError:
         VERSION = '0.0.0+git.error'
 except FileNotFoundError:
     VERSION = '0.0.0+no.git'
+
+try:
+    diff = _output_from('git diff')
+except (FileNotFoundError, sp.CalledProcessError):
+    diff = b''
 
 with open(
     osp.join(
@@ -37,11 +48,12 @@ with open(
         'protonet',
         '__version__.py',
     ),
-    'w',
+    'wb',
 ) as f:
-    f.writelines(''.join(map(lambda x: x + '\n', [
-        '""" Generated automatically---don\'t edit!',
-        '"""',
-        '',
-        f'__version__ = \'{VERSION:s}\''
+    f.write(b''.join(map(lambda x: x + b'\n', [
+        b'""" Generated automatically---don\'t edit!',
+        b'"""',
+        b'',
+        f'__version__ = \'{VERSION:s}\''.encode(),
+        b'__diff__ = b"""' + diff.replace(b'"', b'\\"') + b'"""'
     ])))

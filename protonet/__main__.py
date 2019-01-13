@@ -21,6 +21,7 @@ from torch.utils.data import DataLoader
 from torch.utils.data.dataset import Subset
 
 from . import __version__
+from .__version__ import __diff__
 from .apply import apply
 from .dataset import WordBags, Sequences, make_sequence_loader
 from .logging import DEBUG, ERROR, INFO, WARNING, log, set_level
@@ -331,6 +332,14 @@ def main():
 
         log(INFO, 'running version %s with args %s', __version__,
             ', '.join([f'{k}={v}' for k, v in opts.items()]))
+
+        if __diff__:
+            log(WARNING, 'package is dirty')
+            fp = first_non_existant(osp.join(opts['output_prefix'], 'diff'))
+            with open(fp, 'wb') as fd:
+                log(INFO, 'saving diff to %s', fp)
+                fd.write(__diff__)
+
         log(INFO, 'using device: "%s"', str(get_device().type))
 
         seed = opts.pop('seed')
