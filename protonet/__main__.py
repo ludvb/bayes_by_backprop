@@ -110,6 +110,11 @@ def _train(
         state = restore_state(state)
         network = state['network']
         optimizer = state['optimizer']
+        for p in optimizer.param_groups:
+            if p['lr'] != learning_rate:
+                log(WARNING, 'learning rate differ from state (%f vs %f)',
+                    learning_rate, p['lr'])
+                p['lr'] = learning_rate
         start_epoch = state['epoch']
     else:
         log(INFO, 'initializing network')
