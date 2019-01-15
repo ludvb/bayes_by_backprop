@@ -4,6 +4,10 @@ import argparse as ap
 
 from datetime import datetime as dt
 
+from functools import reduce
+
+import operator as op
+
 import os
 import os.path as osp
 
@@ -143,7 +147,15 @@ def _train(
                 prior_kwargs=prior_kwargs,
                 variational_distribution=variational_distribution,
                 variational_kwargs=variational_kwargs,
-                dataset_size=len(training_set_idxs),
+                dataset_size=(
+                    reduce(
+                        op.add,
+                        (sum(x['input']['length']).item()
+                         for x in training_set),
+                    )
+                    if classify_prefixes else
+                    len(training_set_idxs)
+                ),
                 class_weights=[0.5 / (1 - signal_frac), 0.5 / signal_frac],
                 learn_prior=learn_prior,
             )
