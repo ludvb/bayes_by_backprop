@@ -5,6 +5,8 @@ import os.path as osp
 
 from typing import List
 
+import numpy as np
+
 import torch as t
 from torch.utils.data import DataLoader
 
@@ -58,14 +60,17 @@ def apply(
     def _run(x):
         predictions: List[t.Tensor] = []
         for i in range(samples):
-            ys = network(x['input'], **kwargs)
+            ys = [
+                x.detach().cpu().numpy()
+                for x in network(x['input'], **kwargs)
+            ]
             if track_outputs:
                 for e, j, z in (
                         (e, j, z)
                         for e, zs in zip(x['entry'], ys)
                         for j, z in enumerate(zs)
                 ):
-                    p1, p2 = t.exp(z).detach().cpu().numpy()
+                    p1, p2 = np.exp(z)
                     write_data(OrderedDict((
                         ('entry', e),
                         ('position', j),
@@ -73,7 +78,7 @@ def apply(
                         ('prediction0', p1),
                         ('prediction1', p2),
                     )))
-                _predictions = t.stack([y[-1] for y in ys])
+                _predictions = np.stack([y[-1] for y in ys])
             else:
                 for p1, p2 in t.exp(ys):
                     write_data(OrderedDict((
@@ -86,11 +91,11 @@ def apply(
                 _predictions = ys
             predictions.append(_predictions)
         return dict(
-            accuracy=t.mean((
-                t.argmax(t.mean(t.stack(predictions, dim=0), dim=0), dim=1)
+            accuracy=np.mean(
+                np.argmax(np.mean(np.stack(predictions), axis=0), axis=1)
                 ==
-                x['label']
-            ).float()),
+                x['label'].detach().cpu().numpy()
+            ),
         )
 
     try:
