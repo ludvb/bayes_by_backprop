@@ -4,7 +4,7 @@ import argparse as ap
 
 from datetime import datetime as dt
 
-from functools import reduce
+from functools import partial, reduce
 
 import operator as op
 
@@ -253,7 +253,10 @@ def main():
             'otherwise, train LSTM model.',
         ])
     )
-    train_parser.add_argument('--state', type=t.load)
+    train_parser.add_argument(
+        '--state',
+        type=partial(t.load, map_location='cpu'),
+    )
     train_parser.add_argument(
         '--num-hidden',
         type=int,
