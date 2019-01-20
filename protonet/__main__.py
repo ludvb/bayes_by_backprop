@@ -180,6 +180,7 @@ def _apply(
         wordbags_file,
         state,
         batch_size,
+        truncate,
         **kwargs,
 ):
     log(INFO, 'restoring state from %s', state)
@@ -204,7 +205,7 @@ def _apply(
         if batch_size is None:
             batch_size = 2048
     else:
-        dataset = Sequences(data=data)
+        dataset = Sequences(data=data, truncate=truncate)
         _loader_factory = make_sequence_loader
         if batch_size is None:
             batch_size = 256
@@ -228,6 +229,11 @@ def main():
     args.add_argument('--verbose', action='store_true')
     args.add_argument('--seed', type=int, help='RNG seed')
     args.add_argument('--batch-size', type=int)
+    args.add_argument(
+        '--truncate',
+        type=int,
+        help='truncate sequences to given length (LSTM only)',
+    )
 
     sp = args.add_subparsers()
     train_parser = sp.add_parser('train')
@@ -257,11 +263,6 @@ def main():
         '--hidden-size',
         type=int,
         default=100,
-    )
-    train_parser.add_argument(
-        '--truncate',
-        type=int,
-        help='truncate sequences to given length (LSTM only)',
     )
     train_parser.add_argument(
         '--classify-prefixes',
