@@ -29,7 +29,7 @@ def apply(
         data: DataLoader,
         output_prefix: str,
         track_outputs: bool = True,
-        samples: int = 100,
+        samples: int = 200,
 ):
     if track_outputs and isinstance(network, MLP):
         log(WARNING, 'can\'t track output of MLP, ignoring.')
